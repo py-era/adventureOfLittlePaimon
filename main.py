@@ -14,7 +14,7 @@ class SimpleERAConsole:
         self.screen_width = 1600
         self.screen_height = 1000
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
-        pygame.display.set_caption("ERA Console - 动态加载器版本")
+        pygame.display.set_caption("ERA Console")
         
         # 字体设置
         self.font = pygame.font.Font('./font/luoli.ttf', 24)
