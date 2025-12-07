@@ -1,3 +1,4 @@
+#开始你的第一个Pera事件！
 def event_helloworld(things):
     things.console.PRINT("你好Pera！")
 event_helloworld.event_id = "helloworld"
