@@ -94,36 +94,58 @@ class SimpleERAConsole:
         self.chara_images = {}  # 角色立绘字典，键为角色ID，值为该角色下的图片列表
         # 添加示例文本用于测试滚动
         #self._add_test_content()
-    def PRINTIMG(self, url, clip_pos=None, size=None, click=None, chara_id=None):
+    def PRINTIMG(self, url, clip_pos=None, size=None, click=None, chara_id=None, draw_type=None):
         """
-        显示图片到控制台
+        显示图片到控制台 - 支持新的目录结构
         
         Args:
-            url: 图片名，可以是完整图片名（如"13_別立ち_服_睡衣_笑顔_13"）或原始图片名
+            url: 图片名，可以是完整图片名（如"13_立绘_別立ち_服_睡衣_笑顔_13"）或原始图片名
             clip_pos: 裁剪位置 (x, y)，可选
             size: 调整大小 (width, height)，可选
             click: 点击回调函数，可选
-            chara_id: 角色ID，如果提供，会尝试从该角色的图片列表中查找
+            chara_id: 角色ID，可选
+            draw_type: 立绘类型（如"立绘", "表情绘"等），可选
         """
         try:
-            # 如果指定了角色ID，尝试使用角色ID前缀
+            # 如果指定了角色ID，尝试查找图片
             if chara_id and chara_id in self.chara_images:
-                # 尝试查找带角色ID前缀的图片名
-                prefixed_url = f"{chara_id}_{url}"
-                if prefixed_url in self.image_data:
-                    url = prefixed_url
+                # 如果有立绘类型，优先在指定类型中查找
+                if draw_type and draw_type in self.chara_images[chara_id]:
+                    # 尝试查找带角色ID和立绘类型前缀的图片名
+                    prefixed_url = f"{chara_id}_{draw_type}_{url}"
+                    if prefixed_url in self.image_data:
+                        url = prefixed_url
+                    else:
+                        # 如果没有找到带前缀的，尝试在指定立绘类型的图片列表中查找
+                        for img_name in self.chara_images[chara_id][draw_type]:
+                            if self.image_data[img_name].get('original_name') == url:
+                                url = img_name
+                                break
                 else:
-                    # 如果没有找到带前缀的，尝试在角色图片列表中查找
-                    for img_name in self.chara_images[chara_id]:
-                        if self.image_data[img_name].get('original_name') == url:
-                            url = img_name
+                    # 如果没有指定立绘类型，遍历所有立绘类型查找
+                    found = False
+                    for draw_type_key, img_list in self.chara_images[chara_id].items():
+                        # 尝试查找带角色ID和立绘类型前缀的图片名
+                        prefixed_url = f"{chara_id}_{draw_type_key}_{url}"
+                        if prefixed_url in self.image_data:
+                            url = prefixed_url
+                            found = True
                             break
+                        else:
+                            # 如果没有找到带前缀的，尝试在当前立绘类型的图片列表中查找
+                            for img_name in img_list:
+                                if self.image_data[img_name].get('original_name') == url:
+                                    url = img_name
+                                    found = True
+                                    break
+                            if found:
+                                break
             
             # 检查图片数据是否存在
             if url not in self.image_data:
                 self.PRINT(f"图片 {url} 不存在于数据中", (255, 200, 200))
                 
-                # 尝试查找不带前缀的图片
+                # 尝试查找原始名称匹配的图片
                 found = False
                 for img_name, img_info in self.image_data.items():
                     if img_info.get('original_name') == url:
@@ -194,7 +216,7 @@ class SimpleERAConsole:
         except Exception as e:
             self.PRINT(f"显示图片失败 {url}: {e}", (255, 200, 200))
     def _load_all_chara_images(self):
-        """加载所有角色的立绘数据"""
+        """加载所有角色的立绘数据 - 支持新的目录结构 ./img/角色id/xx绘/角色id.csv"""
         if not hasattr(self, 'init') or not hasattr(self.init, 'chara_ids'):
             self.PRINT("角色ID列表未初始化，无法加载角色立绘", (255, 200, 200))
             return
@@ -202,86 +224,105 @@ class SimpleERAConsole:
         total_chara_images = 0
         
         for chara_id in self.init.chara_ids:
-            # 构建角色立绘CSV文件路径
-            chara_csv_path = f"./img/{chara_id}/{chara_id}.csv"
+            # 构建角色目录路径
+            chara_dir = f"./img/{chara_id}/"
             
-            if os.path.exists(chara_csv_path):
-                try:
-                    chara_image_list = []
+            if not os.path.exists(chara_dir):
+                self.PRINT(f"角色目录不存在: {chara_dir}", (255, 200, 200))
+                continue
+            
+            # 初始化该角色的立绘字典
+            self.chara_images[chara_id] = {}
+            
+            # 扫描角色目录下的所有子目录
+            for item in os.listdir(chara_dir):
+                item_path = os.path.join(chara_dir, item)
+                
+                # 只处理目录，并且目录名以"绘"结尾（假设立绘目录都以此结尾）
+                if os.path.isdir(item_path) and item.endswith('绘'):
+                    draw_type = item  # 例如："立绘", "表情绘", "服装绘"等
+                    csv_path = os.path.join(item_path, f"{chara_id}.csv")
                     
-                    with open(chara_csv_path, 'r', encoding='utf-8-sig') as f:
-                        for line in f:
-                            line = line.strip()
-                            if line and not line.startswith(';'):
-                                parts = [p.strip() for p in line.split(',')]
-                                if len(parts) >= 2:
-                                    name = parts[0]
-                                    filename = parts[1]
-                                    
-                                    # 使用角色ID作为前缀，避免命名冲突
-                                    prefixed_name = f"{chara_id}_{name}"
-                                    
-                                    if len(parts) >= 6:
-                                        try:
-                                            x, y, width, height = int(parts[2]), int(parts[3]), int(parts[4]), int(parts[5])
-                                            self.image_data[prefixed_name] = {
-                                                'filename': filename,
-                                                'base_dir': f'./img/{chara_id}/',
-                                                'x': x,
-                                                'y': y,
-                                                'width': width,
-                                                'height': height,
-                                                'chara_id': chara_id,
-                                                'original_name': name  # 保留原始名称
-                                            }
-                                        except ValueError:
-                                            self.image_data[prefixed_name] = {
-                                                'filename': filename,
-                                                'base_dir': f'./img/{chara_id}/',
-                                                'x': 0,
-                                                'y': 0,
-                                                'width': 270,
-                                                'height': 270,
-                                                'chara_id': chara_id,
-                                                'original_name': name
-                                            }
-                                    else:
-                                        self.image_data[prefixed_name] = {
-                                            'filename': filename,
-                                            'base_dir': f'./img/{chara_id}/',
-                                            'x': 0,
-                                            'y': 0,
-                                            'width': 270,
-                                            'height': 270,
-                                            'chara_id': chara_id,
-                                            'original_name': name
-                                        }
-                                    
-                                    chara_image_list.append(prefixed_name)
-                                    total_chara_images += 1
-                    
-                    # 将角色图片列表存储到字典中
-                    self.chara_images[chara_id] = chara_image_list
-                    
-                    chara_name = self.init.charaters_key.get(chara_id, {}).get('名前', f'角色{chara_id}')
-                    self.PRINT(f"已加载角色立绘: {chara_name}({chara_id}) - {len(chara_image_list)}张", (200, 220, 255))
-                    
-                except Exception as e:
-                    self.PRINT(f"加载角色{chara_id}立绘失败: {e}", (255, 200, 200))
-            else:
-                # 如果角色目录存在但CSV文件不存在，只记录警告
-                chara_dir = f"./img/{chara_id}/"
-                if os.path.exists(chara_dir):
-                    self.PRINT(f"角色{chara_id}立绘数据文件不存在: {chara_csv_path}", (255, 200, 200))
+                    if os.path.exists(csv_path):
+                        try:
+                            draw_image_list = []
+                            
+                            with open(csv_path, 'r', encoding='utf-8-sig') as f:
+                                for line in f:
+                                    line = line.strip()
+                                    if line and not line.startswith(';'):
+                                        parts = [p.strip() for p in line.split(',')]
+                                        if len(parts) >= 2:
+                                            name = parts[0]
+                                            filename = parts[1]
+                                            
+                                            # 使用角色ID和立绘类型作为前缀，避免命名冲突
+                                            prefixed_name = f"{chara_id}_{draw_type}_{name}"
+                                            
+                                            if len(parts) >= 6:
+                                                try:
+                                                    x, y, width, height = int(parts[2]), int(parts[3]), int(parts[4]), int(parts[5])
+                                                    self.image_data[prefixed_name] = {
+                                                        'filename': filename,
+                                                        'base_dir': item_path,  # 使用立绘目录作为基础目录
+                                                        'x': x,
+                                                        'y': y,
+                                                        'width': width,
+                                                        'height': height,
+                                                        'chara_id': chara_id,
+                                                        'draw_type': draw_type,  # 新增：立绘类型
+                                                        'original_name': name  # 保留原始名称
+                                                    }
+                                                except ValueError:
+                                                    self.image_data[prefixed_name] = {
+                                                        'filename': filename,
+                                                        'base_dir': item_path,
+                                                        'x': 0,
+                                                        'y': 0,
+                                                        'width': 270,
+                                                        'height': 270,
+                                                        'chara_id': chara_id,
+                                                        'draw_type': draw_type,
+                                                        'original_name': name
+                                                    }
+                                            else:
+                                                self.image_data[prefixed_name] = {
+                                                    'filename': filename,
+                                                    'base_dir': item_path,
+                                                    'x': 0,
+                                                    'y': 0,
+                                                    'width': 270,
+                                                    'height': 270,
+                                                    'chara_id': chara_id,
+                                                    'draw_type': draw_type,
+                                                    'original_name': name
+                                                }
+                                            
+                                            draw_image_list.append(prefixed_name)
+                                            total_chara_images += 1
+                            
+                            # 将立绘类型下的图片列表存储到字典中
+                            self.chara_images[chara_id][draw_type] = draw_image_list
+                            
+                            chara_name = self.init.charaters_key.get(chara_id, {}).get('名前', f'角色{chara_id}')
+                            self.PRINT(f"已加载角色立绘: {chara_name}({chara_id}) - {draw_type} - {len(draw_image_list)}张", (200, 220, 255))
+                            
+                        except Exception as e:
+                            self.PRINT(f"加载角色{chara_id}的{draw_type}立绘失败: {e}", (255, 200, 200))
+                    else:
+                        self.PRINT(f"立绘数据文件不存在: {csv_path}", (255, 200, 200))
         
         self.PRINT(f"角色立绘加载完成，共{total_chara_images}张图片", (200, 255, 200))
         
         # 显示所有角色ID和对应的图片数量
         self.PRINT_DIVIDER("-", 40, (150, 150, 150))
         self.PRINT("角色立绘统计:", (200, 200, 255))
-        for chara_id, img_list in self.chara_images.items():
+        for chara_id, draw_types in self.chara_images.items():
             chara_name = self.init.charaters_key.get(chara_id, {}).get('名前', f'角色{chara_id}')
-            self.PRINT(f"  {chara_name}({chara_id}): {len(img_list)}张立绘", (200, 200, 200))
+            total_for_chara = sum(len(images) for images in draw_types.values())
+            self.PRINT(f"  {chara_name}({chara_id}): {total_for_chara}张立绘", (200, 200, 200))
+            for draw_type, images in draw_types.items():
+                self.PRINT(f"    {draw_type}: {len(images)}张", (150, 150, 150))
         self.PRINT_DIVIDER("-", 40, (150, 150, 150))
     def _load_image_data(self):
         """加载所有角色的图片数据"""
@@ -790,7 +831,8 @@ class thethings:
             self.input = self.console.INPUT()
             gradient_text = (cs("红").set_color((255, 0, 0)) +cs("橙").set_color((255, 127, 0)) +cs("黄").set_color((255, 255, 0)) +cs("绿").set_color((0, 255, 0)) +cs("青").set_color((0, 255, 255)) +cs("蓝").set_color((0, 0, 255)) +cs("紫").set_color((127, 0, 255)))
             self.console.PRINT(gradient_text.click("gradient"))
-            self.console.PRINTIMG("13_別立ち_服_睡衣_笑顔_13", clip_pos=(270,0))#在输出图片时请在需要输出的图片名前加上角色id_，你可以直接输出在csv中的图片名
+            self.console.PRINTIMG("0_玩家立绘_顔絵_服_通常_0",clip_pos=(0,0))#在输出图片时请在需要输出的图片名前加上角色id_，你可以直接输出在csv中的图片名
+            self.console.PRINT(cs("嗯？你来啦？欢迎来到Pera的世界！这里演示的是图片调用，很抱歉直接使用了eratw🐍版里的你小姐的立绘）").set_color((215, 200, 203)))
             self.console.PRINT(cs("[0]start").click("0"),"          ",cs("点击查看凌冬色图").click("no way!!!"))
             if self.input and self.input.lower() == "quit":
                 running = False

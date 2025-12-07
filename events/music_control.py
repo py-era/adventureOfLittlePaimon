@@ -10,8 +10,8 @@ def event_music_control(things):
     :param things: thethings实例，用于访问音乐盒和控制台
     """
     if not things.console.music_box:
-        things.console.PRINT("音乐系统未初始化", colors=(255, 200, 200))
-        things.console.PRINT("按任意键继续...")
+        things.console.PRINT(things.cs("音乐系统未初始化").color(255, 200, 200))
+        things.console.PRINT(things.cs("按任意键继续..."))
         things.console.INPUT()
         return
     
@@ -39,10 +39,23 @@ def event_music_control(things):
             things.console.PRINT(f"播放位置: {current_pos:.1f}秒")
         
         things.console.PRINT("─" * 40)
-        things.console.PRINT("[1] 播放音乐        [2] 暂停音乐        [3] 继续播放        [4] 停止音乐")
-        things.console.PRINT("[5] 选择音乐        [6] 增大音量        [7] 减小音量        [8] 设置音量")
-        things.console.PRINT("[9] 显示音乐列表        [0] 返回")
-        things.console.PRINT("请输入选择:")
+        things.console.PRINT(
+            things.cs("[1] 播放音乐").click("1"), "        ",
+            things.cs("[2] 暂停音乐").click("2"), "        ",
+            things.cs("[3] 继续播放").click("3"), "        ",
+            things.cs("[4] 停止音乐").click("4")
+        )
+        things.console.PRINT(
+            things.cs("[5] 选择音乐").click("5"), "        ",
+            things.cs("[6] 增大音量").click("6"), "        ",
+            things.cs("[7] 减小音量").click("7"), "        ",
+            things.cs("[8] 设置音量").click("8")
+        )
+        things.console.PRINT(
+            things.cs("[9] 显示音乐列表").click("9"), "        ",
+            things.cs("[0] 返回").click("0")
+        )
+        things.console.PRINT(things.cs("请输入选择:"))
         
         choice = things.console.INPUT()
         
@@ -51,31 +64,31 @@ def event_music_control(things):
         elif choice == '1':
             if things.console.music_box.url:
                 things.console.music_box.play(loops=-1, fade_in=1000)
-                things.console.PRINT("音乐开始播放")
+                things.console.PRINT(things.cs("音乐开始播放"))
             else:
-                things.console.PRINT("请先选择音乐文件", colors=(255, 200, 200))
-            things.console.PRINT("按任意键继续...")
+                things.console.PRINT(things.cs("请先选择音乐文件").color(255, 200, 200))
+            things.console.PRINT(things.cs("按任意键继续..."))
             things.console.INPUT()
         elif choice == '2':
             things.console.music_box.pause()
-            things.console.PRINT("音乐已暂停")
-            things.console.PRINT("按任意键继续...")
+            things.console.PRINT(things.cs("音乐已暂停"))
+            things.console.PRINT(things.cs("按任意键继续..."))
             things.console.INPUT()
         elif choice == '3':
             things.console.music_box.countion()
-            things.console.PRINT("音乐继续播放")
-            things.console.PRINT("按任意键继续...")
+            things.console.PRINT(things.cs("音乐继续播放"))
+            things.console.PRINT(things.cs("按任意键继续..."))
             things.console.INPUT()
         elif choice == '4':
             things.console.music_box.stop()
-            things.console.PRINT("音乐已停止")
-            things.console.PRINT("按任意键继续...")
+            things.console.PRINT(things.cs("音乐已停止"))
+            things.console.PRINT(things.cs("按任意键继续..."))
             things.console.INPUT()
         elif choice == '5':
             # 显示音乐列表供选择
             if not things.console.music_list:
-                things.console.PRINT("音乐列表为空", colors=(255, 200, 200))
-                things.console.PRINT("按任意键继续...")
+                things.console.PRINT(things.cs("音乐列表为空").color(255, 200, 200))
+                things.console.PRINT(things.cs("按任意键继续..."))
                 things.console.INPUT()
                 continue
             
@@ -84,10 +97,11 @@ def event_music_control(things):
             
             music_names = list(things.console.music_list.keys())
             for i, music_name in enumerate(music_names, 1):
-                things.console.PRINT(f"[{i}] {music_name}")
+                things.console.PRINT(things.cs(f"[{i}] {music_name}").click(str(i)))
             
             things.console.PRINT("─" * 40)
-            things.console.PRINT("请输入要播放的音乐编号（0返回）:")
+            things.console.PRINT(things.cs("[0] 返回").click("0"))
+            things.console.PRINT(things.cs("请输入要播放的音乐编号:"))
             
             music_choice = things.console.INPUT()
             if music_choice and music_choice.isdigit():
@@ -101,45 +115,45 @@ def event_music_control(things):
                         if success:
                             things.console.current_music_name = selected_music_name
                             things.console.music_box.play(loops=-1)
-                            things.console.PRINT(f"已切换到: {selected_music_name}")
+                            things.console.PRINT(things.cs(f"已切换到: {selected_music_name}"))
                         else:
-                            things.console.PRINT("切换音乐失败", colors=(255, 200, 200))
+                            things.console.PRINT(things.cs("切换音乐失败").color(255, 200, 200))
                     else:
-                        things.console.PRINT(f"音乐文件不存在: {selected_music_path}", colors=(255, 200, 200))
+                        things.console.PRINT(things.cs(f"音乐文件不存在: {selected_music_path}").color(255, 200, 200))
                 elif choice_num == 0:
                     pass  # 返回
                 else:
-                    things.console.PRINT("无效的选择", colors=(255, 200, 200))
+                    things.console.PRINT(things.cs("无效的选择").color(255, 200, 200))
             else:
-                things.console.PRINT("无效的输入", colors=(255, 200, 200))
+                things.console.PRINT(things.cs("无效的输入").color(255, 200, 200))
             
-            things.console.PRINT("按任意键继续...")
+            things.console.PRINT(things.cs("按任意键继续..."))
             things.console.INPUT()
         elif choice == '6':
             new_volume = min(1.0, current_volume + 0.1)
             things.console.music_box.set_volume(new_volume)
-            things.console.PRINT(f"音量增大到 {new_volume:.2f}")
-            things.console.PRINT("按任意键继续...")
+            things.console.PRINT(things.cs(f"音量增大到 {new_volume:.2f}"))
+            things.console.PRINT(things.cs("按任意键继续..."))
             things.console.INPUT()
         elif choice == '7':
             new_volume = max(0.0, current_volume - 0.1)
             things.console.music_box.set_volume(new_volume)
-            things.console.PRINT(f"音量减小到 {new_volume:.2f}")
-            things.console.PRINT("按任意键继续...")
+            things.console.PRINT(things.cs(f"音量减小到 {new_volume:.2f}"))
+            things.console.PRINT(things.cs("按任意键继续..."))
             things.console.INPUT()
         elif choice == '8':
-            things.console.PRINT("请输入音量 (0.0-1.0):")
+            things.console.PRINT(things.cs("请输入音量 (0.0-1.0):"))
             vol_input = things.console.INPUT()
             try:
                 vol_value = float(vol_input)
                 if 0.0 <= vol_value <= 1.0:
                     things.console.music_box.set_volume(vol_value)
-                    things.console.PRINT(f"音量已设置为 {vol_value:.2f}")
+                    things.console.PRINT(things.cs(f"音量已设置为 {vol_value:.2f}"))
                 else:
-                    things.console.PRINT("音量值必须在0.0到1.0之间", colors=(255, 200, 200))
+                    things.console.PRINT(things.cs("音量值必须在0.0到1.0之间").color(255, 200, 200))
             except ValueError:
-                things.console.PRINT("请输入有效的数字", colors=(255, 200, 200))
-            things.console.PRINT("按任意键继续...")
+                things.console.PRINT(things.cs("请输入有效的数字").color(255, 200, 200))
+            things.console.PRINT(things.cs("按任意键继续..."))
             things.console.INPUT()
         elif choice == '9':
             # 显示音乐列表
@@ -147,25 +161,24 @@ def event_music_control(things):
             things.console.loader.add_text("════════════ 全部音乐 ════════════", (100, 150, 255))
             
             if not things.console.music_list:
-                things.console.PRINT("音乐列表为空", colors=(255, 200, 200))
+                things.console.PRINT(things.cs("音乐列表为空").color(255, 200, 200))
             else:
                 music_names = list(things.console.music_list.keys())
                 for i, music_name in enumerate(music_names, 1):
                     path = things.console.music_list[music_name]
                     exists = "✓" if os.path.exists(path) else "✗"
-                    things.console.PRINT(f"{i:2d}. {music_name} [{exists}]")
-                    things.console.PRINT(f"    路径: {path}", colors=(180, 180, 180))
+                    things.console.PRINT(things.cs(f"[{i}] {music_name} [{exists}]").click(str(i)))
             
             things.console.PRINT("─" * 40)
-            things.console.PRINT("按任意键继续...")
+            things.console.PRINT(things.cs("按任意键继续..."))
             things.console.INPUT()
         else:
-            things.console.PRINT("无效的选择", colors=(255, 200, 200))
-            things.console.PRINT("按任意键继续...")
+            things.console.PRINT(things.cs("无效的选择").color(255, 200, 200))
+            things.console.PRINT(things.cs("按任意键继续..."))
             things.console.INPUT()
     
     # 退出音乐控制界面
-    things.console.PRINT("已离开音乐控制")
+    things.console.PRINT(things.cs("已离开音乐控制"))
     things.console.loader.add_divider("=", 40, (100, 200, 255))
 
 # 为事件函数添加元数据
