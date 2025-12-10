@@ -126,69 +126,33 @@ class SimpleERAConsole:
         except Exception as e:
             self.PRINT(f"更改字体失败: {e}", colors=(255, 200, 200))
 
-    def PRINTIMG(self, url, clip_pos=None, size=None, click=None, chara_id=None, draw_type=None):
+    # main.py - 修改 PRINTIMG 方法
+    def PRINTIMG(self, url, clip_pos=None, size=None, click=None, chara_id=None, draw_type=None, img_list=None):
         """
-        显示图片到控制台 - 支持新的目录结构
+        显示图片到控制台 - 增强版，支持单张图片或图片列表叠加
         
         Args:
-            url: 图片名，可以是完整图片名（如"13_立绘_別立ち_服_睡衣_笑顔_13"）或原始图片名
+            url: 单张图片名，或当使用img_list时的默认图片
             clip_pos: 裁剪位置 (x, y)，可选
             size: 调整大小 (width, height)，可选
             click: 点击回调函数，可选
             chara_id: 角色ID，可选
-            draw_type: 立绘类型（如"立绘", "表情绘"等），可选
+            draw_type: 立绘类型，可选
+            img_list: 图片列表，用于叠加显示。可以是：
+                    1. 图片名列表 [img1, img2, ...]
+                    2. 字典列表 [{"img": img1, "draw_type": type1}, ...]
+                    3. 混合列表
         """
         try:
-            # 如果指定了角色ID，尝试查找图片
-            if chara_id and chara_id in self.chara_images:
-                # 如果有立绘类型，优先在指定类型中查找
-                if draw_type and draw_type in self.chara_images[chara_id]:
-                    # 尝试查找带角色ID和立绘类型前缀的图片名
-                    prefixed_url = f"{chara_id}_{draw_type}_{url}"
-                    if prefixed_url in self.image_data:
-                        url = prefixed_url
-                    else:
-                        # 如果没有找到带前缀的，尝试在指定立绘类型的图片列表中查找
-                        for img_name in self.chara_images[chara_id][draw_type]:
-                            if self.image_data[img_name].get('original_name') == url:
-                                url = img_name
-                                break
-                else:
-                    # 如果没有指定立绘类型，遍历所有立绘类型查找
-                    found = False
-                    for draw_type_key, img_list in self.chara_images[chara_id].items():
-                        # 尝试查找带角色ID和立绘类型前缀的图片名
-                        prefixed_url = f"{chara_id}_{draw_type_key}_{url}"
-                        if prefixed_url in self.image_data:
-                            url = prefixed_url
-                            found = True
-                            break
-                        else:
-                            # 如果没有找到带前缀的，尝试在当前立绘类型的图片列表中查找
-                            for img_name in img_list:
-                                if self.image_data[img_name].get('original_name') == url:
-                                    url = img_name
-                                    found = True
-                                    break
-                            if found:
-                                break
+            # 如果传入了img_list，则使用列表模式
+            if img_list and isinstance(img_list, list):
+                # 创建图片列表叠加标记
+                return self._print_image_stack(img_list, clip_pos, size, click, chara_id, draw_type)
             
-            # 检查图片数据是否存在
-            if url not in self.image_data:
-                self.PRINT(f"图片 {url} 不存在于数据中",colors= (255, 200, 200))
-                
-                # 尝试查找原始名称匹配的图片
-                found = False
-                for img_name, img_info in self.image_data.items():
-                    if img_info.get('original_name') == url:
-                        url = img_name
-                        found = True
-                        break
-                
-                if not found:
-                    return
-            
-            img_info = self.image_data[url]
+            # 以下是原有的单张图片处理逻辑
+            img_info = self._find_image_info(url, chara_id, draw_type)
+            if not img_info:
+                return
             
             # 构建图片标记
             params = []
@@ -216,13 +180,7 @@ class SimpleERAConsole:
             img_mark += "]"
             
             # 注册图片信息到动态加载器
-            self.loader.register_image_info(url, {
-                'path': os.path.join(img_info['base_dir'], img_info['filename']),
-                'original_width': img_info['width'],
-                'original_height': img_info['height'],
-                'chara_id': img_info.get('chara_id'),
-                'draw_type': img_info.get('draw_type')
-            })
+            self.loader.register_image_info(url, img_info)
             
             # 使用动态加载器添加图片标记
             if click:
@@ -236,6 +194,140 @@ class SimpleERAConsole:
             
         except Exception as e:
             self.PRINT(f"显示图片失败 {url}: {e}", colors=(255, 200, 200))
+
+    def _find_image_info(self, img_url, chara_id=None, draw_type=None):
+        """根据图片名、角色ID和立绘类型查找图片信息"""
+        actual_url = img_url
+        
+        # 尝试直接查找
+        if actual_url in self.image_data:
+            return self._get_image_info_dict(actual_url)
+        
+        # 如果有角色ID，尝试加上前缀查找
+        if chara_id:
+            # 如果有立绘类型，优先在指定类型中查找
+            if draw_type and draw_type in self.chara_images.get(chara_id, {}):
+                prefixed_url = f"{chara_id}_{draw_type}_{img_url}"
+                if prefixed_url in self.image_data:
+                    return self._get_image_info_dict(prefixed_url)
+                
+                # 尝试查找原始名称匹配的图片
+                for img_name in self.chara_images[chara_id][draw_type]:
+                    if self.image_data[img_name].get('original_name') == img_url:
+                        return self._get_image_info_dict(img_name)
+            
+            # 如果没有指定立绘类型，在所有立绘类型中查找
+            else:
+                for draw_type_key, img_list_data in self.chara_images.get(chara_id, {}).items():
+                    prefixed_url = f"{chara_id}_{draw_type_key}_{img_url}"
+                    if prefixed_url in self.image_data:
+                        return self._get_image_info_dict(prefixed_url)
+                    
+                    for img_name in img_list_data:
+                        if self.image_data[img_name].get('original_name') == img_url:
+                            return self._get_image_info_dict(img_name)
+        
+        # 尝试全局查找原始名称匹配的图片
+        for img_name, img_info in self.image_data.items():
+            if img_info.get('original_name') == img_url:
+                return self._get_image_info_dict(img_name)
+        
+        self.PRINT(f"图片 {img_url} 不存在于数据中", colors=(255, 200, 200))
+        return None
+
+    def _get_image_info_dict(self, img_name):
+        """获取图片信息字典"""
+        if img_name not in self.image_data:
+            return None
+        
+        img_info = self.image_data[img_name]
+        return {
+            'path': os.path.join(img_info['base_dir'], img_info['filename']),
+            'original_width': img_info['width'],
+            'original_height': img_info['height'],
+            'chara_id': img_info.get('chara_id'),
+            'draw_type': img_info.get('draw_type'),
+            'original_name': img_info.get('original_name')
+        }
+
+    def _print_image_stack(self, img_list, clip_pos=None, size=None, click=None, chara_id=None, draw_type=None):
+        """
+        处理图片列表叠加显示
+        
+        Args:
+            img_list: 图片列表，可以是：
+                    1. 字符串列表：["img1", "img2", ...]
+                    2. 字典列表：[{"img": "img1", "draw_type": "type1"}, ...]
+        """
+        try:
+            processed_images = []
+            
+            for img_item in img_list:
+                # 处理不同类型的图片项
+                if isinstance(img_item, dict):
+                    # 字典格式：{"img": 图片名, "draw_type": 立绘类型, "chara_id": 角色ID}
+                    img_url = img_item.get('img')
+                    item_draw_type = img_item.get('draw_type', draw_type)
+                    item_chara_id = img_item.get('chara_id', chara_id)
+                else:
+                    # 字符串格式：直接是图片名
+                    img_url = img_item
+                    item_draw_type = draw_type
+                    item_chara_id = chara_id
+                
+                # 查找图片信息
+                img_info = self._find_image_info(img_url, item_chara_id, item_draw_type)
+                if not img_info:
+                    self.PRINT(f"图片 {img_url} 不存在于数据中", colors=(255, 200, 200))
+                    continue
+                
+                # 使用图片名作为唯一标识
+                img_name = img_info.get('original_name', img_url)
+                if item_chara_id and item_draw_type:
+                    img_name = f"{item_chara_id}_{item_draw_type}_{img_name}"
+                
+                # 注册图片信息
+                self.loader.register_image_info(img_name, img_info)
+                processed_images.append(img_name)
+            
+            if not processed_images:
+                self.PRINT("图片列表为空或所有图片都不存在", colors=(255, 200, 200))
+                return
+            
+            # 构建图片叠加标记
+            # 格式: [IMG_STACK:图片1|图片2|图片3|参数]
+            param_str = f"img_list={','.join(processed_images)}"
+            
+            if clip_pos:
+                param_str += f"|clip={clip_pos[0]},{clip_pos[1]}"
+            
+            if size:
+                param_str += f"|size={size[0]},{size[1]}"
+            
+            if click:
+                param_str += f"|click={click}"
+            
+            if chara_id:
+                param_str += f"|chara={chara_id}"
+            
+            if draw_type:
+                param_str += f"|type={draw_type}"
+            
+            # 创建特殊的图片叠加标记
+            stack_mark = f"[IMG_STACK:{processed_images[0]}|{param_str}]"
+            
+            # 添加到动态加载器
+            if click:
+                self.loader.add_image_mark(stack_mark, click)
+            else:
+                self.loader.add_image_mark(stack_mark)
+            
+            # 刷新显示
+            self._draw_display()
+            pygame.display.flip()
+            
+        except Exception as e:
+            self.PRINT(f"显示图片叠加失败: {e}", colors=(255, 200, 200))
     def _load_all_chara_images(self):
         """加载所有角色的立绘数据 - 支持新的目录结构 ./img/角色id/xx绘/角色id.csv"""
         if not hasattr(self, 'init') or not hasattr(self.init, 'chara_ids'):
@@ -863,14 +955,16 @@ class thethings:
             self.input = self.console.INPUT()
             gradient_text = (cs("红").set_color((255, 0, 0)) +cs("橙").set_color((255, 127, 0)) +cs("黄").set_color((255, 255, 0)) +cs("绿").set_color((0, 255, 0)) +cs("青").set_color((0, 255, 255)) +cs("蓝").set_color((0, 0, 255)) +cs("紫").set_color((127, 0, 255)))
             self.console.PRINT(gradient_text.click("gradient"))
-            self.console.PRINTIMG("0_玩家立绘_顔絵_服_通常_0",clip_pos=(0,0),size=(180,180))#在输出图片时请在需要输出的图片名前加上角色id_，你可以直接输出在csv中的图片名
+            img_list = ["別顔_服_笑顔_0","別顔_汗_0",]
+            self.console.PRINTIMG("",img_list=img_list,chara_id='0',draw_type='玩家立绘')#在输出图片时请在需要输出的图片名前加上角色id_，你可以直接输出在csv中的图片名
             self.console.PRINT(cs("嗯？你来啦？欢迎来到Pera的世界！这里演示的是图片调用，很抱歉直接使用了eratw🐍版里的你小姐的立绘）").set_color((215, 200, 203)))
             self.console.PRINT(cs("[0]start").click("0"),"          ",cs("点击查看凌冬色图").click("no way!!!"),"          ",cs("点击更改字体").click("fontreset"),"        ",cs("[666]和你小姐对话").click("666"))
             if self.input and self.input.lower() == "quit":
                 running = False
             elif self.input:
                 #在这里添加事件
-                self.event_manager.trigger_event('start',self)
+                if self.input=='0':
+                    self.event_manager.trigger_event('start',self)
                 if self.input=='debug':
                     self.event_manager.trigger_event('showme',self)
                 if self.input=="666":

@@ -80,6 +80,7 @@ class ContentType(Enum):
     TEXT = "text"
     IMAGE = "image"
     IMAGE_MARK = "image_mark"  # 图片标记类型
+    IMAGE_STACK = "image_stack"  # 新增：图片叠加类型
     DIVIDER = "divider"
     MENU = "menu"
 
@@ -162,6 +163,26 @@ class DynamicLoader:
         self.clickable_regions = []  # 存储所有可点击区域
         self.clickable_region_counter = 0  # 可点击区域计数器
         self.active_clickable_regions = []  # 当前显示的可点击区域
+    def parse_image_stack_mark(self, text):
+        """解析图片叠加标记字符串"""
+        if not text.startswith("[IMG_STACK:") or not text.endswith("]"):
+            return None, {}
+        
+        content = text[11:-1]  # 移除 [IMG_STACK: 和 ]
+        parts = content.split("|")
+        
+        if not parts:
+            return None, {}
+        
+        main_img_url = parts[0]
+        params = {}
+        
+        for param in parts[1:]:
+            if "=" in param:
+                key, value = param.split("=", 1)
+                params[key] = value
+        
+        return main_img_url, params
     def _parse_image_mark(self, text):
         """解析图片标记字符串"""
         if not text.startswith("[IMG:") or not text.endswith("]"):
@@ -195,24 +216,24 @@ class DynamicLoader:
         return None
     def add_image_mark(self, img_mark, click_value=None):
         """
-        添加图片标记到历史记录
+        添加图片标记到历史记录 - 增强版，支持图片叠加
         
         Args:
-            img_mark: 图片标记字符串，格式 [IMG:图片ID|参数]
+            img_mark: 图片标记字符串，格式 [IMG:图片ID|参数] 或 [IMG_STACK:图片1|参数]
             click_value: 点击时输入的文本
         """
-        # 解析图片标记
+        # 检查是否是图片叠加标记
+        if img_mark.startswith("[IMG_STACK:"):
+            return self._add_image_stack_mark(img_mark, click_value)
+        
+        # 原有的单张图片处理逻辑
         img_url, params = self._parse_image_mark(img_mark)
         if not img_url:
-            # 如果不是有效的图片标记，作为普通文本处理
             return self.add_text(img_mark)
         
-        # 获取图片信息（从主控制台传递过来）
-        # 注意：我们需要在SimpleERAConsole中注册图片信息到loader
         img_info = self.get_registered_image_info(img_url)
         
         if not img_info:
-            # 图片未注册，显示错误标记
             item = ConsoleContent(
                 ContentType.TEXT,
                 f"[图片未找到: {img_url}]",
@@ -237,16 +258,16 @@ class DynamicLoader:
         
         # 创建图片内容项
         item = ConsoleContent(
-            ContentType.IMAGE_MARK,  # 新的内容类型
-            img_mark,  # 保留原始标记
-            height=size[1] + 10 if size else img_info.get('height', 270) + 10,
+            ContentType.IMAGE_MARK,
+            img_mark,
+            height=size[1] + 10 if size else img_info.get('original_height', 270) + 10,
             metadata={
                 'img_url': img_url,
                 'img_info': img_info,
                 'clip_pos': clip_pos,
                 'size': size,
                 'click_value': click_value,
-                'cached_surface': None,  # 稍后渲染
+                'cached_surface': None,
                 'needs_rendering': True
             }
         )
@@ -255,7 +276,6 @@ class DynamicLoader:
             item.metadata['clickable'] = True
             item.metadata['region_id'] = self.clickable_region_counter
             
-            # 记录点击区域
             self.clickable_regions.append({
                 'id': self.clickable_region_counter,
                 'content_item': item,
@@ -270,7 +290,94 @@ class DynamicLoader:
         self._write_to_log(f"[IMAGE] {img_url}")
         self._update_current_display()
         
-        # 自动滚动到底部
+        if self.scroll_offset <= 5:
+            self.scroll_to_bottom()
+        
+        return item
+
+    def _add_image_stack_mark(self, img_mark, click_value=None):
+        """
+        添加图片叠加标记
+        """
+        # 格式: [IMG_STACK:主图片|img_list=图片1,图片2,...|clip=x,y|size=w,h|click=值]
+        main_img_url, params = self.parse_image_stack_mark(img_mark)
+        
+        if not main_img_url or 'img_list' not in params:
+            return self.add_text(img_mark)
+        
+        # 解析图片列表
+        img_list_str = params['img_list']
+        img_list = img_list_str.split(',')
+        
+        if not img_list:
+            return self.add_text("[空图片列表]")
+        
+        # 获取所有图片的信息
+        img_infos = {}
+        for img_url in img_list:
+            img_info = self.get_registered_image_info(img_url)
+            if img_info:
+                img_infos[img_url] = img_info
+        
+        # 解析其他参数
+        clip_pos = None
+        size = None
+        chara_id = params.get('chara')
+        draw_type = params.get('type')
+        
+        if 'clip' in params:
+            clip_x, clip_y = map(int, params['clip'].split(','))
+            clip_pos = (clip_x, clip_y)
+        
+        if 'size' in params:
+            width, height = map(int, params['size'].split(','))
+            size = (width, height)
+        
+        # 计算高度
+        if size:
+            height = size[1] + 10
+        else:
+            # 使用第一个图片的高度
+            first_img_url = img_list[0]
+            first_info = img_infos.get(first_img_url, {})
+            height = first_info.get('original_height', 270) + 10
+        
+        # 创建图片叠加内容项
+        item = ConsoleContent(
+            ContentType.IMAGE_STACK,
+            img_mark,
+            height=height,
+            metadata={
+                'img_list': img_list,
+                'img_infos': img_infos,
+                'clip_pos': clip_pos,
+                'size': size,
+                'click_value': click_value,
+                'chara_id': chara_id,
+                'draw_type': draw_type,
+                'cached_surface': None,
+                'needs_rendering': True
+            }
+        )
+        
+        if click_value:
+            item.metadata['clickable'] = True
+            item.metadata['region_id'] = self.clickable_region_counter
+            
+            self.clickable_regions.append({
+                'id': self.clickable_region_counter,
+                'content_item': item,
+                'click_value': click_value,
+                'text': f"[图片叠加] {len(img_list)}张",
+                'type': 'image_stack'
+            })
+            
+            self.clickable_region_counter += 1
+        
+        self.history.append(item)
+        self._write_to_log(f"[IMAGE_STACK] {len(img_list)}张图片")
+        self._update_current_display()
+        
         if self.scroll_offset <= 5:
             self.scroll_to_bottom()
         
@@ -939,9 +1046,115 @@ class DynamicLoader:
             'at_bottom': self.scroll_offset == 0,
             'at_top': False  # 需要在后续计算
         }
-    
+    # dynamic_loader.py - 添加 _render_and_draw_image_stack 方法
+    def _render_and_draw_image_stack(self, screen, item, x, y):
+        """渲染并绘制图片叠加"""
+        metadata = item.metadata
+        
+        # 检查是否有缓存的图片
+        if metadata.get('cached_surface') and not metadata.get('needs_rendering'):
+            surface = metadata['cached_surface']
+            screen.blit(surface, (x, y))
+            return surface
+        
+        # 需要渲染图片叠加
+        img_list = metadata.get('img_list', [])
+        img_infos = metadata.get('img_infos', {})
+        
+        if not img_list:
+            # 绘制错误指示
+            self._draw_image_error(screen, x, y, item.height - 10)
+            return None
+        
+        try:
+            # 创建透明Surface
+            if metadata.get('size'):
+                target_width, target_height = metadata['size']
+                final_surface = pygame.Surface((target_width, target_height), pygame.SRCALPHA)
+            else:
+                # 使用第一个图片的尺寸
+                if img_list and img_list[0] in img_infos:
+                    first_info = img_infos[img_list[0]]
+                    final_surface = pygame.Surface(
+                        (first_info.get('original_width', 270), 
+                        first_info.get('original_height', 270)), 
+                        pygame.SRCALPHA
+                    )
+                else:
+                    final_surface = pygame.Surface((270, 270), pygame.SRCALPHA)
+            
+            # 依次叠加每个图片
+            for img_url in img_list:
+                if img_url not in img_infos:
+                    continue
+                
+                img_info = img_infos[img_url]
+                img_path = img_info.get('path', '')
+                
+                if not os.path.exists(img_path):
+                    continue
+                
+                try:
+                    image = pygame.image.load(img_path).convert_alpha()
+                    
+                    # 裁剪
+                    clip_pos = metadata.get('clip_pos') or (0, 0)
+                    clip_x, clip_y = clip_pos
+                    clip_width = img_info.get('original_width', 270)
+                    clip_height = img_info.get('original_height', 270)
+                    
+                    # 确保裁剪区域有效
+                    img_width, img_height = image.get_size()
+                    if clip_x + clip_width > img_width:
+                        clip_width = img_width - clip_x
+                    if clip_y + clip_height > img_height:
+                        clip_height = img_height - clip_y
+                    
+                    if clip_width > 0 and clip_height > 0:
+                        clip_rect = pygame.Rect(clip_x, clip_y, clip_width, clip_height)
+                        clipped_image = image.subsurface(clip_rect)
+                    else:
+                        continue
+                    
+                    # 调整大小
+                    size = metadata.get('size')
+                    if size:
+                        target_width, target_height = size
+                        clipped_image = pygame.transform.scale(
+                            clipped_image, (target_width, target_height)
+                        )
+                    
+                    # 叠加到最终Surface上
+                    final_surface.blit(clipped_image, (0, 0))
+                    
+                except Exception as e:
+                    print(f"加载叠加图片 {img_url} 失败: {e}")
+                    continue
+            
+            # 缓存结果
+            metadata['cached_surface'] = final_surface
+            metadata['needs_rendering'] = False
+            
+            # 绘制
+            screen.blit(final_surface, (x, y))
+            
+            # 更新点击区域（如果有点击功能）
+            if metadata.get('clickable'):
+                for region in self.clickable_regions:
+                    if region.get('content_item') == item:
+                        region['rect'] = pygame.Rect(x, y, 
+                                                final_surface.get_width(), 
+                                                final_surface.get_height())
+            
+            return final_surface
+            
+        except Exception as e:
+            print(f"渲染图片叠加失败: {e}")
+            self._draw_image_error(screen, x, y, item.height - 10)
+            return None
+    # dynamic_loader.py - 修改 draw 方法
     def draw(self, screen: pygame.Surface):
-        """绘制内容到屏幕 - 增强版，支持图片标记渲染"""
+        """绘制内容到屏幕 - 增强版，支持图片标记和图片叠加渲染"""
         current_y = 10
         
         # 绘制可见内容
@@ -1042,10 +1255,17 @@ class DynamicLoader:
                     text_surface = self.font.render(item.data, True, item.color)
                     screen.blit(text_surface, (10, current_y))
                     current_y += item.height
+            
+            elif item.type == ContentType.IMAGE_STACK:  # 新增：处理图片叠加
+                # 渲染图片叠加
+                self._render_and_draw_image_stack(screen, item, 10, current_y)
+                current_y += item.height
+            
             elif item.type == ContentType.IMAGE_MARK:
                 # 渲染图片标记
                 self._render_and_draw_image_mark(screen, item, 10, current_y)
                 current_y += item.height
+            
             elif item.type == ContentType.IMAGE:
                 # 处理旧的图片类型（向后兼容）
                 if item.data in self.image_cache:

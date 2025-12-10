@@ -30,8 +30,9 @@ def event_isay(this):
             this.console.PRINT("真的要看吗？y/n")
             real= this.console.INPUT()
             if real== "y":
+                img_list = ["別顔_裸_発情_0","別顔_汗_0",]
                 this.console.PRINT("那就给你看吧...")
-                this.console.PRINTIMG("0_玩家立绘_別顔_裸_笑顔_0", clip_pos=(0,0), size=(180,180))
+                this.console.PRINTIMG("", img_list=img_list, chara_id='0', draw_type='玩家立绘')
                 this.console.INPUT()
             elif real=='n':
                 this.console.PRINT("切~")
