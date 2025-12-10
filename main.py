@@ -873,7 +873,8 @@ class thethings:
                 self.event_manager.trigger_event('start',self)
                 if self.input=='debug':
                     self.event_manager.trigger_event('showme',self)
-                self.event_manager.trigger_event("isay",self)
+                if self.input=="666":
+                    self.event_manager.trigger_event("isay",self)
                 self.console.PRINT("")
             # 处理退出事件
             for event in pygame.event.get():
