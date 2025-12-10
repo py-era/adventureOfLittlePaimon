@@ -67,10 +67,10 @@ def event_bad_apple(this):
     
     # ==== 4. 播放循环 ====
     this.console.clear_screen()
-    
+    this.console.set_font('./font/consola.ttf', 24)
     try:
         import pygame
-        this.console.set_font('./font/consola.ttf', 24)
+        
         for frame_index, ascii_frame in enumerate(FRAMES):
             # 现在start_time肯定有值，可以安全使用
             target_time = start_time + (frame_index * frame_interval)
@@ -118,7 +118,7 @@ def event_bad_apple(this):
             this.console.music_box.stop()
     
     # ==== 5. 播放结束 ====
-    this.console.set_font('./font/luoli.ttf', 12)
+    this.console.set_font('./font/luoli.ttf', 24)
     this.console.PRINT("\n=== 演出结束 ===", colors=(100, 255, 100))
     this.console.PRINT("按任意键返回主菜单...")
     this.console.INPUT()
